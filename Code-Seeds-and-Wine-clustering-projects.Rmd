@@ -1,0 +1,1562 @@
+
+# Seeds and Wine clustering projects:
+
+## Seeds Dataset
+
+* For Partitional clustering we are going to use "Seeds' dataset. This dataset can be found in UCI Machine Learning repository. The URL is: https://archive.ics.uci.edu/dataset/236/seeds
+* Variables: The dataset comprises seven real-valued continuous variables and one target
+variable, resulting in a total of eight variables.
+
+The dataset "Seeds" consists of measurements of geometric properties of kernels from three different varieties of wheat: Kama, Rosa, and Canadian. The dataset includes 70 randomly selected kernels from each variety, making a total of 210 elements used in the experiment. A non-destructive soft X-ray technique was employed to obtain high-quality visualizations of the internal structure of the kernels. This technique is cost-effective compared to more advanced imaging methods like scanning microscopy or laser technology. The X-ray images were captured on 13x18 cm KODAK
+plates. The wheat grain used in the study was harvested from experimental fields and originated from the Institute of Agrophysics of the Polish Academy of Sciences in Lublin.
+
+### Load the data and create the object seeds
+
+```{r}
+#Reading the data
+seeds<-read.table("seeds_dataset.txt", header = FALSE)
+
+colnames(seeds) <- c('area', 'perimeter', 'compactness', 'length_of_kernel', 'width_of_kernel', 'asymmetry_coefficient','length_of_kernel_groove','type')
+
+head(seeds)
+```
+
+### Exploratory Data Analysis 
+
+```{r}
+# observing the unique value of the Ground true column. 
+unique(seeds$type)
+```
+
+This columns is the one to use to evaluate external the cluster results and is a categorical variable, with three types of seeds.
+
+```{r}
+#Observing the statistic of the data
+dim(seeds)
+summary(seeds)
+```
+
+```{r}
+# Verifying if the dataset contains null values:
+sum(is.na(seeds))
+```
+
+As we can see there are not missing values 
+
+```{r}
+#Looking the type of the variables and the number of observations
+str(seeds)
+```
+The dataset has continues variables. However the variable type is a categorical variables showing 3 differentes kinds of seeds. 
+
+### Data Visualization of the variables 
+
+
+```{r}
+library(packHV)
+for (x in names(seeds)) {
+  hist_boxplot(seeds[[x]],col="lightblue",freq=TRUE,  xlab = x,main = paste("Histogram of", x))
+} 
+```
+
+#### Interpretation about distribution:
+
+By examining these histograms, we can discern the distribution characteristics of all variables. Notably, the following variables exhibit right-skewed distributions:
+
+- Area
+- Perimeter
+- Length of kernel
+- Asymmetry coefficient
+- Length of kernel groove
+
+In contrast, the variable 'compactness' displays a left-skewed distribution. Lastly, the variable 'width of kernel' appears to be nearly symmetric.
+
+#### Interpretation about outliers:
+
+Our data reveals the presence of outliers, which are noticeable in the following variables:
+
+- Compactness
+- Asymmetry coefficient
+
+#### Data Visualization for the differents groups 
+
+To obtain statistics for each seed type, we will develop a function that provides a comprehensive summary, encompassing crucial measures such as the minimum, first quartile (Q1), median, mean, third quartile (Q3), and maximum values. Later, we will plot the histogram to have a visual representation of these results:
+
+```{r}
+library(dplyr)
+summary_list <- list()
+
+for (x in names(seeds)){
+  summary_result <- seeds %>%
+    group_by(seeds$type) %>%
+    summarise(across(
+      {{x}},
+      list(
+        min = min,
+        q1 = ~ quantile(., 0.25),
+        median = median,
+        mean = mean,
+        q3 = ~ quantile(., 0.75),
+        max = max
+      ),
+      .names = "{.col}_{.fn}"
+    ))
+  summary_list[[x]] <- summary_result
+}
+```
+
+
+```{r}
+for (x in names(seeds)) {
+  print(summary_list[[x]])
+}
+```
+
+
+```{r}
+library(ggplot2)
+
+seeds$type <- as.factor(seeds$type)
+
+par(mfrow = c(1, ncol(seeds)), mar = c(4, 4, 2, 1), oma = c(0, 0, 0, 0))
+
+for (i in 1:(ncol(seeds))) {
+  boxplots <- ggplot(seeds, aes(x = type, y = !!sym(names(seeds)[i]), fill = type)) +
+    geom_boxplot(width = 0.5) +
+    labs(title = names(seeds)[i], y = "Value") +
+    theme_classic() +
+    theme(plot.title = element_text(hjust = 0.5))
+print(boxplots)
+}
+
+```
+
+#### Interpretation per variable based on seed groups:
+
+Among the different seed types (Type 1, Type 2, and Type 3), Type 2 stands out as having significantly higher values across most variables, as evident from its first quartile 1, median, third quartile 3, and maximum values. However, in the 'compactness' column, there is some overlap between Type 1 and Type 2, suggesting that they exhibit similar values for this particular characteristic. Moreover, in the 'asymmetry_coefficient' column, the median value, maximum and third quartile for Type 3 are higher than the same values for the other seed types in this column.
+
+Furthermore, during our analysis, we noticed the prevalence of outliers in nearly all columns of our dataset, with the exception of the width of kernel and compactness columns for the three types of seeds. This suggests that these specific seed types may demonstrate more pronounced extreme values compared to others.
+
+However, it is worth noting that the outliers within each seed type do not significantly impact the overall outliers when considering the information from the entire columns, disregarding the seed types' distinctions, as we observed previously.
+
+
+### Correlations between numerical variables 
+
+```{r}
+library("ggplot2")
+library("GGally")
+seeds_cor <- ggpairs(seeds[, 1:7], aes(color = factor(seeds$type), alpha = 0.5), 
+        upper = list(continuous = wrap("cor", size = 2.5)), 
+        progress = FALSE)
+seeds_cor + theme(strip.text.x = element_text(size = 5),
+           strip.text.y = element_text(size = 5))
+```
+
+#### Interpretation
+
+The plot above displays Pearson's correlation coefficients for the variables. The interpretation of the results is as follows:
+
+- Strong correlation: When the absolute value of the correlation coefficient (|r|) is greater than 0.7.
+- Moderate correlation: When the absolute value of the correlation coefficient (|r|) is between 0.3 and 0.7.
+- Weak correlation: When the absolute value of the correlation coefficient (|r|) is between 0 and 0.3.
+
+
+Based on the table above, we can observe the strength of correlations between different pairs of variables. The coefficients falling within the specified ranges indicate the level of linear association between the variables:
+
+Strong correlation: 
+- Area and perimeter, length_of_kernel, width_of_kernel (0.9)
+- Area and length_of_kernel_groove (0.8)
+- Perimeter and length_of_kernel, width_of_kernel (0.8)
+- Perimeter and length_of_kernel_groove (0.8)
+- Compactness and width_of_kernel (0.7)
+- Length_of_kernel and width_of_kernel (0.8)
+- Length_of_kernel and length_of_kernel_groove (0.9)
+- Width_of_kernel and length_of_kernel_groove (0.7)
+
+Moderate correlation:
+- Area and compactness (0.6)
+- Compactness and perimeter (0.5)
+- Length_of_kernel and compactness (0.3)
+- Asymmetry_coefficient and compactness (-0.3)
+
+Weak correlation:
+- Asymmetry_coefficient and area, perimeter, width_of_kernel (-0.2)
+- Asymmetry_coefficient and length_of_kernel (-0.1)
+- Asymmetry_coefficient and length_of_kernel_groove (-0.01)
+
+### Creating a heatmap to verify the correlation result:
+
+```{r}
+library('gplots')
+library(RColorBrewer)
+
+# Creating the correlation matrix
+cor_matrix <- cor(seeds[, 1:7])
+rounded_cor_matrix <- round(cor_matrix, 2)
+
+# Defining the color
+col_side_colors <- rep(c('blue', 'pink'), length.out = ncol(rounded_cor_matrix))
+row_side_colors <- rep(c('purple', 'orange'), length.out = nrow(rounded_cor_matrix))
+color_gradient <- brewer.pal(11,"Spectral")
+
+# Creating the heatmap
+heatmap.2(rounded_cor_matrix, scale = "none", col = color_gradient, cellnote = rounded_cor_matrix,
+          RowSideColors = row_side_colors,
+          ColSideColors = col_side_colors,
+          trace = 'none', key = TRUE, cexRow = 1.0, cexCol = 1.0, main = 'Seeds Heatmap')
+```
+#### Interpretation:
+In this heatmap, the color-coded values reinforce the findings from the previous plot. Variables with the strongest positive correlations are represented by dark blue shades, while those with the highest negative correlations appear as red. It is evident that all variables exhibit strong positive correlations with each other.
+
+### Scaling the data to continue with the clustering algorithm
+
+```{r}
+df<-seeds[,-8]
+df_scale_seeds<-scale(df)
+```
+
+### Asssessing cluster tendency
+
+Visual inspection of the data
+
+```{r}
+library("factoextra")
+# Plot faithful data set
+fviz_pca_ind(prcomp(df_scale_seeds), title = "PCA - Seeds data", 
+             habillage = seeds$type,  palette = "jco",
+             geom = "point", ggtheme = theme_classic(),
+             legend = "bottom")
+```
+
+### Hopkins Statistic. Statistical methods
+
+We can conduct the Hopkins Statistic test iteratively, using 0.5 as the threshold to reject the alternative hypothesis. 
+Ho:The data set Seeds is uniformly distributed(no meaningful cluster)
+Ha: The data set Seeds is not uniformly distributed.Thus, contain meaningful clusters
+
+```{r}
+library('hopkins')
+hopkins(df_scale_seeds, m=(nrow(df_scale_seeds)/10)-1)
+```
+Since Hopkins is 0.999 (greater than 0.5) we reject the null hypothesis and we can say that the data is not uniformly distributed (can contain meaningful clustering) 
+
+### Distance Matrix Plot
+
+```{r}
+#Distance matrix plot
+fviz_dist(dist(df, method = "euclidean"), show_labels = FALSE, 
+     gradient = list(low = "red", mid = "white", high = "blue"))+
+  labs(title = "Seeds data")
+
+```
+#### Interpretation:
+The gradient of colors in the plot reveals that the blue color represents a high level of dissimilarity, indicating distinct groups. On the other hand, the red color indicates a low level of dissimilarity, suggesting a higher similarity within the group. Therefore, based on the plot, we can conclude that there are three distinct groups depicted by shades of red, which aligns with the ground truth data.
+
+## Why did we choose K-means as the algorithm for this dataset?
+
+For this part we are going to answer the question 'Why did we choose K-means as the partitional clustering methods?' using the Internal Validation Clustering.
+
+```{r}
+library(clValid)
+clmethods<-c("hierarchical", "kmeans", "pam")
+intern<-clValid(df_scale_seeds, nClust= 2:6, clMethods=clmethods, validation="internal", metric = "euclidean")
+summary(intern)
+```
+
+
+#### Interpretation:
+
+After analyzing the results of the Connectivity, Dunn, and Silhouette indices, it is evident that the K-means cluster algorithm is the most suitable choice for this dataset. Consequently, we will utilize the K-means algorithm to determine the optimal number of clusters, denoted as 'k'.
+
+### Optimal Cluster
+
+#### Elbow method
+
+##### Using Kmeans as partitional method 
+
+```{r}
+library(factoextra)
+#Using kmeans as partition method
+fviz_nbclust(df_scale_seeds,kmeans, method="wss") + 
+  geom_vline(xintercept= 3, linetype=2)# Create the xintercept line
+```
+
+```{r}
+#Using pam as partition method
+fviz_nbclust(df_scale_seeds,cluster::pam, method="wss") + 
+  geom_vline(xintercept= 3, linetype=2)
+```
+
+#### Interpretation:
+Based on the application of the Elbow Method, it is evident that the optimal number of clusters, denoted as k, appears to be 3. This determination is made by considering the Total Within-Cluster Sum of Squares (WSS) and noting that the WSS does not exhibit significant changes beyond 3 clusters, specifically when comparing it to the case with 4 clusters. In our analysis, we thoroughly examined various partitioning clustering techniques, including k-means, and pam, all of which consistently pointed towards the selection of 3 clusters. Consequently, the consensus among these two clustering methods further reinforces the conclusion that 3 clusters provide the most meaningful and representative grouping of the data.
+
+
+### Using the Silhouette coefficient 
+
+#### Using kmeans  as partitional method 
+```{r}
+#Using kmeans as partition method
+library(cluster)
+fviz_nbclust(df_scale_seeds,kmeans, method="silhouette") + 
+  theme_classic()
+
+```
+
+#### Using pam as partitional method 
+
+```{r}
+#Using pam as partition method
+fviz_nbclust(df_scale_seeds,cluster::pam, method="silhouette") + 
+  theme_classic()
+```
+
+#### Intepretation:
+It is worth noting that the results obtained from the Silhouette Coefficient analysis differ from those obtained using the Elbow Method. The Silhouette Coefficient suggests the presence of 2 clusters based on the calculated scores, which indicates the quality and consistency of clustering. This observation holds true even when considering the application of two different partitioning clustering algorithms.
+
+However, it is important to mention that the second Silhouette coefficient, which is 3, that also matches with the ground true and Elbow method
+
+### Gap statistic
+
+#### Using kmeans as partitional method 
+
+```{r}
+set.seed(123)
+
+fviz_nbclust(df_scale_seeds, kmeans, nstart = 25,  method = "gap_stat", nboot = 50)+
+  labs(subtitle = "Gap statistic method")
+```
+
+#### Using pam as partitional method 
+
+```{r}
+set.seed(123)
+
+fviz_nbclust(df_scale_seeds, pam, nstart = 25,  method = "gap_stat", nboot = 50)+
+  labs(subtitle = "Gap statistic method")
+```
+
+#### Interpretation:
+Based on the gap statistic plot, it is evident that the dataset exhibits 3 distinct clusters, which aligns with the ground truth column indicating the presence of 3 clusters. The gap statistic is a reliable measure used to determine the optimal number of clusters, and in this case, it confirms the existence of 3 clusters within the dataset.
+
+```{r}
+library('NbClust')
+res<-NbClust(data = df_scale_seeds, distance = "manhattan", min.nc = 2, max.nc = 15, method = 'kmeans', index = "all", alphaBeale = 0.1)
+```
+
+We can see that there are 10 indices that proposes 2 cluster and 10 indices that proposes 3 cluster as well. So, it in this case we are going to choose k=3 for this dataset for now, then we are going to validate the data. 
+
+### Cluster Algorithm and Visualization. 
+
+#### Partitional Clustering K-means and Visualization plots
+
+```{r}
+km.res_seeds<-kmeans(df_scale_seeds, 3, nstart = 25)
+```
+
+```{r}
+fviz_cluster(km.res_seeds, data = df_scale_seeds,
+             palette = c("#2E9FDF", "#00AFBB", "#E7B800", "#FC4E07"), 
+             ellipse.type = "euclid", # Concentration ellipse
+             star.plot = TRUE, # Add segments from centroids to items
+             repel = TRUE, # Avoid label overplotting (slow)
+             ggtheme = theme_minimal()
+             )
+```
+
+#### Interpretation:
+After applying k-means, it is evident that this algorithm successfully identify distinct clusters in the 2D
+plots. The clusters are clearly distinguishable, indicating that the partitioning algorithms effectively group
+the data points based on their similarities or dissimilarities.
+This consistency across different partitioning methods reinforces the robustness of the clustering results.
+Regardless of the specific algorithm used, all methods consistently identify and separate the clusters present
+in the data, highlighting their distinct patterns and structures.
+Therefore, we can confidently conclude that the k-means demonstrate its ability to accurately identify and
+differentiate the clusters within the 2D plots. These method provide valuable insights into the underlying
+structure of the data, enabling further analysis and interpretation of the distinct groups present in the dataset.
+
+#### Partitional Clustering PAM and  Visualization plots
+
+```{r}
+pam.res_seeds<-pam(df_scale_seeds, 3, nstart = 25, metric = "euclidean")
+```
+
+```{r}
+fviz_cluster(pam.res_seeds, data = df_scale_seeds,
+             palette = c("#2E9FDF", "#00AFBB", "#E7B800", "#FC4E07"), 
+             ellipse.type = "euclid", # Concentration ellipse
+             star.plot = TRUE, # Add segments from centroids to items
+             repel = TRUE, # Avoid label overplotting (slow)
+             ggtheme = theme_minimal()
+             )
+```
+
+#### Interpretation:
+After applying various partitioning methods such as k-means, and pam, it is evident that all these methods successfully identify distinct clusters in the 2D plots. The clusters are clearly distinguishable, indicating that the partitioning algorithms effectively group the data points based on their similarities or dissimilarities.
+
+This consistency across different partitioning methods reinforces the robustness of the clustering results. Regardless of the specific algorithm used, all methods consistently identify and separate the clusters present in the data, highlighting their distinct patterns and structures.
+
+Therefore, we can confidently conclude that the k-means, and pam partitioning methods demonstrate their ability to accurately identify and differentiate the clusters within the 2D plots. These methods provide valuable insights into the underlying structure of the data, enabling further analysis and interpretation of the distinct groups present in the dataset.
+
+## Internal Validation
+
+### Silhouette coefficient analysis 
+
+--> Validation of the Silhouette coefficient analysis with K-means:
+
+```{r}
+library('factoextra')
+res.km_1 <- eclust(df_scale_seeds, "kmeans", k=3, nstart=25, graph=FALSE)
+```
+
+```{r}
+# Silhouette plot
+fviz_silhouette(res.km_1, palette="jco", 
+                ggtheme=theme_classic())
+```
+
+```{r}
+silinfo <- res.km_1$silinfo
+names(silinfo)
+# Average silhouette width of each cluster
+silinfo$clus.avg.widths
+# The total average (mean of all individual silhouette widths)
+silinfo$avg.width
+# The size of each clusters
+res.km_1$size
+
+```
+
+```{r}
+# Silhouette width of observation
+sil <- res.km_1$silinfo$widths[, 1:3]
+# Objects with negative silhouette
+neg_sil_index <- which(sil[, 'sil_width'] < 0)
+sil[neg_sil_index, , drop = FALSE]
+
+```
+
+#### Intepretation:
+Choosing the k-means algorithm as the partition method based on a Silhouette Score of 0.40 and the absence of negative silhouette widths is a valid decision. A Silhouette Score of 0.40 indicates a reasonably good separation and compactness of clusters.
+
+The Silhouette Score is a widely used metric for clustering evaluation, and its value ranges from -1 to 1. A score close to 1 indicates well-defined and well-separated clusters, while a score near 0 suggests overlapping clusters, and negative scores indicate incorrect clustering.
+
+A Silhouette Score of 0.40 is generally considered as a positive indication of clustering quality. It implies that the average distance between data points within clusters is larger than the average distance to the nearest neighboring cluster. This suggests that the clusters are relatively well-separated and that each data point is appropriately assigned to its respective cluster.
+
+--> Validation of the Silhouette coefficient analysis with K-medoids:
+
+```{r}
+res.pam_1 <- eclust(df_scale_seeds, "pam", k=3, nstart=25, graph=FALSE, metric="euclidean")
+```
+
+```{r}
+fviz_silhouette(res.pam_1, palette="jco", 
+                ggtheme=theme_classic())
+```
+
+```{r}
+silinfo <- res.pam_1$silinfo
+names(silinfo)
+# Average silhouette width of each cluster
+round(silinfo$clus.avg.widths,3)
+# The total average (mean of all individual silhouette widths)
+round(silinfo$avg.width,3)
+```
+
+
+```{r}
+# Silhouette width of observation
+sil <- res.pam_1$silinfo$widths[, 1:3]
+# Objects with negative silhouette
+neg_sil_index <- which(sil[, 'sil_width'] < 0)
+sil[neg_sil_index, , drop = FALSE]
+
+```
+
+#### Interpretation:
+Considering a Silhouette Average of 0.398 and 7 negative silhouette values for the Partitioning Around Medoids (PAM) clustering algorithm, the decision to choose PAM as the partition method requires further examination.
+
+-Silhouette Average of 0.398:
+A Silhouette Average of 0.398 indicates that, on average, the clusters have a reasonable separation and compactness. While the value is slightly below 0.40, it is still considered as a positive indication of clustering quality. It suggests that, overall, the data points have been assigned to appropriate clusters with some degree of separation.
+-7 Negative Silhouette Values:
+The presence of 7 negative silhouette values is a concerning factor. Negative silhouette values indicate that some data points may have been poorly assigned to clusters, and their nearest neighboring cluster is more similar to them than their assigned cluster. This indicates suboptimal clustering for these data points.
+Given these results, the choice of PAM as the partition method may be less favorable compared to k-means with a Silhouette Score of 0.40 and no negative silhouette widths. While the Silhouette Average for PAM is close to that of k-means, the presence of negative silhouette values raises concerns about the quality of some clusters and the appropriateness of the assignments for certain data points.
+
+--> Validation of the Silhouette coefficient analysis with Hierarchical:
+
+```{r}
+res.hclust_1 <- eclust(df_scale_seeds, "hclust", hc_metric="euclidean", graph=FALSE)
+```
+
+```{r}
+fviz_silhouette(res.hclust_1, palette="jco", 
+                ggtheme=theme_classic())
+```
+
+```{r}
+silinfo <- res.hclust_1$silinfo
+names(silinfo)
+# Average silhouette width of each cluster
+silinfo$clus.avg.widths
+# The total average (mean of all individual silhouette widths)
+silinfo$avg.width
+# The size of each clusters
+res.hclust_1$size
+```
+
+```{r}
+# Silhouette width of observation
+sil <- res.hclust_1$silinfo$widths[, 1:3]
+# Objects with negative silhouette
+neg_sil_index <- which(sil[, 'sil_width'] < 0)
+sil[neg_sil_index, , drop = FALSE]
+```
+
+#### Interpretation:
+Considering a Silhouette Average of 0.392 and 10 negative silhouette values for the hierarchical clustering (hclust) algorithm, the decision to choose hclust as the partition method requires thorough investigation and consideration.
+
+-Silhouette Average of 0.392:
+A Silhouette Average of 0.392 indicates that, on average, the clusters have a reasonable separation and compactness. While the value is not exceptionally high, it is still considered a positive indication of clustering quality. It suggests that, in general, the data points have been grouped into clusters with some degree of separation and cohesion.
+- 10 Negative Silhouette Values:
+The presence of 10 negative silhouette values is a significant concern. Negative silhouette values suggest that many data points are poorly assigned to clusters and are more similar to data points in other clusters. This indicates potential serious issues with cluster quality and the appropriateness of the cluster assignments for a substantial portion of the data.
+Given these results, the choice of hclust as the partition method becomes less favorable compared to k-means or PAM, both of which had Silhouette Scores of 0.392 and fewer (or no) negative silhouette values. The higher number of negative silhouette values in hclust raises serious doubts about the quality and validity of the clustering solution.
+
+So, as we observed in the internal validation, we firmly believe that k-means is the best algorithm to cluster with k=3. 
+
+### Internal validation indexes
+
+```{r}
+library(clValid)
+clmethods<-c("hierarchical", "kmeans", "pam")
+intern<-clValid(df_scale_seeds, nClust= 2:6, clMethods=clmethods, validation="internal", metric='euclidean')
+summary(intern)
+```
+
+#### Plot of internal validation metrics
+
+```{r}
+op<-par(no.readonly = TRUE)
+par(mfrow=c(2,2), mar=c(4,4,3,1))
+plot(intern, legend=FALSE)
+plot(nClusters(intern), measures(intern, "Dunn")[,,1],type="n", axes=F, xlab="",ylab="")
+legend("center", clusterMethods(intern), col=1:9, lty=1:9, pch=paste(1:9))
+par(op)
+
+```
+After analyzing the results, it becomes apparent that the optimal number of clusters varies depending on the evaluation metric used. The Connectivity and Silhouette metrics suggest that two clusters are optimal, while the Dunn Index and the K-means method suggest three clusters as the optimal choice.
+
+### Stability measures
+
+```{r}
+stab<-clValid(df_scale_seeds, nClust= 2:6,clMethods=c("hierarchical", "kmeans", "pam"), validation="stability", metric='euclidean')
+summary(stab)
+```
+
+```{r}
+op<-par(no.readonly= TRUE)
+par(mfrow=c(2, 2) , mar=c(4, 4,3, 1))
+plot(stab, measure=c("APN", "AD", "ADM","FOM") , legend=FALSE)
+plot(nClusters(stab), measures(stab, "APN") [,,1], type="n", axes=F,
+xlab="" ,ylab="")
+legend("center", clusterMethods(stab), col=1:9, lty=1:9, pch=paste (1:9))
+par(op)
+```
+#### Interpretation:
+The stability measures compare the results from clustering based on the full data to clustering based on removing each column, one at a time. In all cases the average is taken over all the deleted columns, and all measures should be minimized.
+
+APN and ADM are suggesting k-means with k=2 (respectively 0.0351,0.1632). The second best is when k=3 for k-means in the same measures.
+
+AD and FOM are suggesting pam with k=6 and k=5 (respectively 1.6608,0.5095). K=6 is our upper bound for k, which probably means AD has not converged yet.
+
+## External Validation
+
+### RRand Index
+
+--> Partitional method k-means:
+
+```{r}
+X<-km.res_seeds$cluster
+X
+seeds$type <- as.numeric(seeds$type)
+Y<-seeds$type
+Y
+```
+
+```{r}
+library('EMCluster')
+RRand(X,Y)
+```
+
+#### Interpretation:
+The results obtained from the Rand Index and adjusted Rand Index analysis indicate a high level of similarity and agreement between the two sets of cluster assignments (X and Y). The Rand Index value of 0.8997 suggests a strong similarity between the clusters generated by the two methods, indicating a high degree of correspondence in their clustering outcomes. The adjusted Rand Index value of 0.7733 further confirms this agreement, accounting for the potential effects of chance agreement.
+
+### Meila's Variation Index (VI)
+
+```{r}
+library('mcclust')
+vi.dist(Y, X, parts = FALSE, base = 2)
+```
+
+#### Interpretation:
+Meila's Variation Index (VI) is a metric that measures the similarity between two clusterings or partitions of the same dataset. An score of 0.8624 suggests a strong level of similarity between the two clusterings, so  the algorithm is  perfectly capturing the underlying structure of the data.
+
+--> Additional validation with K-medoids:
+
+```{r}
+library('cluster')
+pam.res <- pam(df_scale_seeds, 3)
+X1 <-pam.res$cluster
+X1
+```
+
+```{r}
+library('EMCluster')
+RRand(X1,Y)
+```
+
+### Meila's Variation Index (VI)
+
+```{r}
+library('mcclust')
+vi.dist(Y, X1, parts = FALSE, base = 2)
+```
+
+#### Interpretation:
+The results obtained from the Rand Index and adjusted Rand Index analyses for K-medoids demonstrate a substantial level of similarity and agreement between the two sets of cluster assignments, albeit slightly lower than the results obtained with K-means. The Rand Index value of 0.8879 indicates a robust similarity between the clusters generated by the two methods, and the adjusted Rand Index value of 0.7470 further strengthens this observation by accounting for the potential effects of chance agreement.
+
+Moreover, Meila's Variation Index (VI) exhibits a score of 0.9037, suggesting a robust level of similarity between the two clusterings, even surpassing that achieved with K-means. This implies a higher degree of agreement between the cluster assignments obtained from K-medoids, making it a promising alternative for this dataset.
+
+
+## Wine dataset
+
+Source: UCI Machine Learning Repository
+- URL: https://archive.ics.uci.edu/dataset/109/wine
+- Variables: The dataset contains 13 continuous variables and one target variable, resulting in
+a total of 14 variables.
+
+The dataset "Wine" comprises the outcomes of a chemical analysis conducted on wines produced
+in the same Italian region but obtained from three distinct grape cultivars. The analysis measured
+the levels of 13 different components present in each of the three wine types.
+
+### Load the data and create the object wine
+
+```{r}
+
+wine<-read.csv("wine.data")
+
+colnames(wine) <- c('Type', 'Alcohol', 'Malic_acid', 'Ash', 
+                      'Alcalinity_of_ash', 'Magnesium', 'Total_Phenols', 
+                      'Flavanoids', 'Nonflavanoids_phenols',
+                      'Proanthocyanins', 'Color_intensity', 'Hue', 
+                      'Dilution_wines', 'Proline')
+```
+
+## Exploratory Data Analysis
+
+```{r}
+unique(wine$Type)
+```
+
+```{r}
+str(wine)
+```
+We can see that all the majority of  variables are numerical variables, just Type is a categorical variable. 
+
+```{r}
+wine$Type<- as.factor(wine$Type)
+```
+
+```{r}
+# Check for missing values in each column
+colSums(is.na(wine))
+```
+No missing values are found.
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+### Exploratory Data Analysis  for Type variable
+
+-Frequency table, bar graph and pie chart
+
+```{r}
+# Create a frequency table for the "Type" variable
+type_freq <- table(wine$Type)
+
+# Print the frequency table
+print("Frequency Table for Type:")
+print(type_freq)
+
+# Draw a horizontal histogram for count of categories of Type
+barplot(type_freq, horiz = TRUE, col = "skyblue", main = "Count of Wine Types", xlab = "Count")
+
+# Calculate proportions and format labels as percentages
+type_prop <- round(type_freq / sum(type_freq) * 100, 1)
+labels_with_percentage <- paste(type_prop, "%", sep = "")
+
+# Draw a pie chart based on proportions with legend and relative numbers
+pie(type_freq, col = rainbow(length(type_freq)), main = "Proportions of Wine Types",
+    labels = labels_with_percentage, cex = 0.8)
+    legend("topright", legend = levels(wine$Type), fill = rainbow(length(type_freq)))
+```
+#### Interpretation: 
+The  variable `Type` is not highly imbalanced as there are not a huge difference between the frequency of each category of Type.
+
+### Exploratory Analysis for numerical variables: box plot and histogram for each variable
+
+```{r}
+# Create a list of numerical column names (excluding "Type")
+numerical_cols <- colnames(wine)[sapply(wine, is.numeric) & colnames(wine) != "Type"]
+```
+
+```{r}
+# Loop through each numerical variable and create a box plot
+for (var in numerical_cols) {
+  boxplot(wine[[var]], main = paste("Box Plot for", var))
+}
+```
+
+```{r}
+#create histograms for each
+for (var in numerical_cols) {
+  hist(wine[[var]], main = paste("Histogram Plot for", var), ylab = "Frequency")
+}
+```
+
+#### Interpretation:
+
+Base on the result we can conclude the following:
+Alcohol: normally distributed, no outliers
+Malic_aci: left_skewed, has outliers
+Ash: roughly normally distributed, has outliers
+Alcalinity_of_ash : roughly normally distributed, has outliers
+Magnesium: left_skewed, has outliers
+Total_Phenols: roughly normally distributed, has outliers
+Flavanoids: roughly left_skewed, no outliers
+Nonflavanoids_phenols: left_skewed, no outliers
+Proanthocyanins: roughly normally distributed, has outliers
+Color_intensity: left-skewed, has outliers
+Hue: roghly normal distributed, has outliers
+Dilution_wines: right_skewed, no outliers
+Proline: left_skewed, no outliers
+
+### Correlation coefficient and matrix
+
+```{r}
+wine2<-wine[,-1]
+# Calculate the correlation matrix
+cor_matrix <- cor(wine2)
+```
+
+```{r}
+# Plot a larger heatmap of the correlation matrix with annotations
+# Convert the correlation matrix to a data frame
+cor_df <- as.data.frame(as.table(cor_matrix))
+names(cor_df) <- c("Variable1", "Variable2", "Correlation")
+
+# Plot the heatmap using ggplot2
+library(ggplot2)
+ggplot(cor_df, aes(Variable1, Variable2, fill = Correlation, label = round(Correlation, 2))) +
+  geom_tile() +
+  geom_text(size = 2) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0, limit = c(-1, 1)) +
+  theme_minimal() +
+  coord_fixed() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Correlation Heatmap",
+)
+
+```
+
+```{r}
+sorted_cor_data <- cor_df[order(-abs(cor_df$Correlation)), ]
+
+# Filter to exclude correlations with value 1
+filtered_cor_data <- sorted_cor_data[abs(sorted_cor_data$Correlation) < 1, ]
+
+# Remove duplicate correlations (keep only the first occurrence)
+filtered_cor_data <- filtered_cor_data[!duplicated(filtered_cor_data$Correlation), ]
+
+# Select the top 10 correlations
+top_10_correlations <- head(filtered_cor_data, 10)
+
+# Print the top 10 correlations with associated variable pairs
+print(top_10_correlations)
+```
+#### Interpretation:
+We can see that these variables ("Flavanoids", "Total_Phenols", "Dilution_wines") have the most correlation to each other. So,I decided to split these to have neater pair plots.
+
+```{r}
+#install.packages("GGally") 
+library(GGally) 
+
+# Select the variables for the first pair plot
+pairplot1_vars <- c("Flavanoids", "Total_Phenols", "Dilution_wines")
+
+# Select the remaining variables for the second and third pair plots
+pairplot2_vars <- setdiff(colnames(wine2), pairplot1_vars)
+
+# Create the first pair plot
+ggpairs(wine2[, pairplot1_vars], corner = TRUE,progress = FALSE, lower = list(continuous = "smooth"))
+
+# Create the second pair plot
+ggpairs(wine2[, pairplot2_vars[1:5]], corner = TRUE,progress = FALSE, lower = list(continuous = "smooth"))
+
+# Create the third pair plot
+ggpairs(wine2[, pairplot2_vars[6:10]], corner = TRUE,progress = FALSE, lower = list(continuous = "smooth"))
+```
+
+### Exploratory data analysis for numerical variables VS. Type
+
+Boxplots for each predictor per each category of Type.Is there any meaningful difference between means of each numerical variable in each level of Type?
+Which variables have the most effect on Type variable? (Random Forest for feature selection)
+Descriptive summary for most influential variables on Type
+Boxplot for most influential variables VS. Type
+
+```{r}
+# Function to create a box plot for each numerical variable
+create_boxplot <- function(column) {
+  ggplot(wine, aes(x = "", y = .data[[column]], fill = factor(Type))) +
+    geom_boxplot() +
+    facet_wrap(~Type, scales = "free_y") +
+    labs(title = paste("Box Plot for", column),
+         x = NULL,
+         y = "Value",
+         fill = "Type")
+}
+```
+
+```{r}
+#create box plots for each
+for (col in numerical_cols) {
+  plot <- create_boxplot(col)
+  print(plot)  # Display each box plot
+}  
+```
+
+```{r}
+# Load the necessary package for TukeyHSD
+library(stats)
+
+# Perform ANOVA for each numerical variable against the target variable "Type"
+for (var in numerical_cols) {
+  aov_result <- aov(wine[[var]] ~ Type, data = wine)
+  
+  # Get ANOVA table
+  anova_table <- anova(aov_result)
+  
+  # Check for significant differences (p-value < 0.05) in ANOVA
+  if (anova_table$"Pr(>F)"[1] < 0.05) {
+    # Perform Tukey's HSD test
+    tukey_result <- TukeyHSD(aov_result)
+    
+    # Print the results
+    cat("Variable:", var, "\n")
+    print(tukey_result)
+    cat("-------------------------","\n")
+  } else {
+    cat("Variable:", var, "- No significant differences found\n")
+    cat("-------------------------","\n")
+  }
+}
+```
+#### Interpretation:
+It is evident that there are meaningful difference between means of all numerical variable in levels of Type.
+TuckeyHSD interpretation: All pairs in all groups showed significant difference between their means, except: 1-2 in Malic_acid, 1-3 in ASh, 2-3 in Alcalinity_of_ash , 2-3 in Magnesium, and 1-2 in Hue.
+
+```{r}
+#install.packages("randomForest") 
+library(randomForest)
+
+# Set the target variable
+target_var <- "Type"
+
+# Fit the Random Forest model
+rf_model <- randomForest(as.factor(Type) ~ ., data = wine[, c(numerical_cols, target_var)])
+
+# Get feature importance scores
+importance_scores <- rf_model$importance
+
+# Sort the importance scores in descending order
+sorted_importance <- importance_scores[order(-importance_scores[,"MeanDecreaseGini"]), ]
+
+print(sorted_importance)
+```
+
+#### Interpretation:
+Random forest feature selection technique suggest that these variables (Proline,Flavanoids,Color_intensity,Alcohol,Dilution_wines) have the most effect on Type.
+Descriptive statistics are calculate for these variables in each level of Type.
+
+```{r}
+library(dplyr)
+library(MASS)
+type1 <- dplyr::select(filter(wine, Type == 1),Proline,Flavanoids,Color_intensity,Alcohol,Dilution_wines)
+summary(type1)
+```
+
+```{r}
+type2 <- dplyr::select(filter(wine, Type == 2),Proline,Flavanoids,Color_intensity,Alcohol,Dilution_wines)
+summary(type2)
+```
+
+```{r}
+type3 <- dplyr::select(filter(wine, Type == 3),Proline,Flavanoids,Color_intensity,Alcohol,Dilution_wines)
+summary(type3)
+```
+
+```{r}
+variables_of_interest <- c("Proline", "Flavanoids", "Color_intensity","Alcohol","Dilution_wines")
+
+#create box plots for each
+for (col in variables_of_interest) {
+  boxplot <- create_boxplot(col)
+  print(boxplot)  # Display each box plot
+}
+
+```
+We are going to use Manhattan distance because we saw more outliers that the first dataset. 
+
+## Scale the numerical variables 
+
+```{r}
+df1<-wine[,-1]
+df_scale_wine<-scale(df1)
+```
+
+## Asssessing cluster tendency
+
+###Visual inspection of the data
+
+```{r}
+library("factoextra")
+# Plot faithful data set
+fviz_pca_ind(prcomp(df1), title = "PCA - Wine data", 
+             habillage = wine$Type,  palette = "jco",
+             geom = "point", ggtheme = theme_classic(),
+             legend = "bottom")
+```
+```{r}
+#Kmeans algorithm to see visual inspection of the cluster with partition method
+km.res_wine<-kmeans(df_scale_wine, 3, nstart = 25)
+
+#Plot the data
+library(factoextra)
+fviz_cluster(list(data = df_scale_wine,cluster= km.res_wine$cluster), 
+             ellipse.type = "norm",geom = "point", stand = FALSE,
+             palette="jco", ggtheme=theme_classic())
+             
+```
+We can see using kmeans that the data can be clustered, we clearly can have 3 cluster base on the ground truth `Type`. 
+```{r}
+# Hierarchical clustering on the dataset
+fviz_dend(hclust(dist(df_scale_wine), method = "ward.D2"), k = 3, k_colors = "jco",  
+          as.ggplot = TRUE, show_labels = FALSE)
+```
+## Hopkins Statistic. Statistical methods
+
+We can conduct the Hopkins Statistic test iteratively, using 0.5 as the threshold to reject the alternative hypothesis. 
+Ho:The data set Seeds is uniformly distributed(no meaningful cluster)
+Ha: The data set Seeds is not uniformly distributed.Thus, contain meaningful clusters
+
+```{r}
+set.seed(123)
+library("hopkins")
+hopkins(df_scale_wine, m=(nrow(df_scale_seeds)/10)-1)
+```
+#### Interpretation:
+Since Hopkins is 0.999 (greater than 0.5) we reject the null hypothesis and we can say that the data is not uniformly distributed (can contain meaningful clustering) 
+
+### Distance Matrix Plot
+
+```{r}
+#Plot to see the clustering groups
+fviz_dist(dist(df1, method = "manhattan"), show_labels = FALSE,gradient = list(low = "red", mid = "white", high = "blue"))+
+  labs(title = "Wine data")
+```
+
+#### Interpretation:
+The gradient of colors in the plot reveals that the blue color represents a high level of dissimilarity, indicating distinct groups. On the other hand, the red color indicates a low level of dissimilarity, suggesting a higher similarity within the group. Therefore, based on the plot, we cannot  conclude that there are three distinct groups depicted by shades of red, we can distinguish several groups that might be 3. 
+
+## Why did we choose Hierarchical as the algorithm for this dataset?
+
+For this part we are going to answer the question 'Why did we choose Hierarchical as the algorithm for this dataset?' using the Internal Validation Clustering.
+
+```{r}
+library(clValid)
+clmethods<-c("hierarchical", "kmeans", "pam")
+intern<-clValid(df_scale_wine, nClust= 2:6, clMethods=clmethods, validation="internal", metric = "manhattan")
+summary(intern)
+```
+
+
+#### Interpretation:
+
+After an in-depth analysis of the Internal Validation Clustering results, we arrive at the following conclusions: the Connectivity and Dunn indices favor the Hierarchical clustering algorithm as the most suitable method, while the Silhouette score advocates for the K-means algorithm. Consequently, for this dataset, we will proceed with the Hierarchical clustering algorithm due to its strong performance in both Connectivity and Dunn metrics.
+
+By selecting the Hierarchical algorithm, we aim to determine the optimal number of clusters, denoted as 'k,' which will facilitate the generation of meaningful and interpretable clusters for our dataset.
+
+## Optimal Clusters
+
+### Elbow Method 
+
+```{r}
+# Using kmeans as partitional method
+library(cluster)
+library(factoextra)
+fviz_nbclust(df_scale_wine,kmeans, method="wss") + 
+  geom_vline(xintercept= 3, linetype=2)
+```
+
+```{r}
+# Using pam as patition cluster function
+fviz_nbclust(df_scale_wine,pam, method="wss") + 
+  geom_vline(xintercept= 3, linetype=2)
+```
+
+```{r}
+#Using  agglomeration as cluster function
+fviz_nbclust(df_scale_wine,hcut, method="wss") + 
+  geom_vline(xintercept= 3, linetype=2)
+```
+#### Interpretation:
+The Elbow Method indicates that the optimal number of clusters is 3, as there is no significant improvement in the Total WSS beyond this point. We can see a slightly bend in k=3 among all the cluster function used.
+
+
+### Silhoutte with plot
+
+```{r}
+#Using kmeas as partition cluster function
+fviz_nbclust(df_scale_wine,kmeans, method="silhouette") + 
+  theme_classic()
+```
+
+```{r}
+#Using pam as partition cluster function
+fviz_nbclust(df_scale_wine,pam, method="silhouette") + 
+  theme_classic()
+```
+
+```{r}
+#Using pam as hierarchical cluster function
+fviz_nbclust(df_scale_wine,hcut, method="silhouette") + 
+  theme_classic()
+```
+#### Interpretation:
+It is worth noting that the results obtained from the Silhouette Coefficient analysis align with both the Elbow Method and the ground truth, suggesting the presence of 3 clusters in the dataset. The Elbow Method indicates that the optimal number of clusters is 3, as there is no significant improvement in the Total WSS beyond this point. The Silhouette Coefficient, which measures the quality and consistency of clustering, also supports this finding by yielding a score that corresponds to 3 clusters.
+
+This agreement between the Silhouette Coefficient, the Elbow Method, and the ground truth reinforces the evidence for the existence of 3 distinct clusters in the dataset. Regardless of the different partitioning clustering algorithms applied, including k-means, PAM, and hcut, the consistent results provide confidence in the identification of these 3 clusters.
+
+The second best k for the silhouette coefficient is k=2 with the 3 algorithm functions
+
+### Gap statistic
+
+```{r}
+set.seed(123)
+#Using kmeans as partition cluster function
+fviz_nbclust(df_scale_wine, kmeans, nstart = 25,  method = "gap_stat", nboot = 50)+
+  labs(subtitle = "Gap statistic method")
+```
+
+```{r}
+set.seed(123)
+#Using pam as partition cluster function
+fviz_nbclust(df_scale_wine, pam, nstart = 25,  method = "gap_stat", nboot = 50)+
+  labs(subtitle = "Gap statistic method")
+```
+
+
+```{r}
+set.seed(123)
+#Using hcut as hierarchical cluster function
+fviz_nbclust(df_scale_wine, hcut, nstart = 25,  method = "gap_stat", nboot = 25)+
+  labs(subtitle = "Gap statistic method")
+```
+
+#### Interpretation:
+Based on the gap statistic plot, it is evident that the dataset exhibits 3 distinct clusters, which aligns with the ground truth column indicating the presence of 3 clusters. The gap statistic is a reliable measure used to determine the optimal number of clusters, and in this case, it confirms the existence of 3 clusters within the dataset. Additionally, we will generate the result of the NbClust() function which provides a systematic approach for evaluating various clustering methods. However, before using NbClust, we need to determine the appropriate clustering method for the Hierarchical technique. This will serve as a crucial hyperparameter to be specified in the NbClust function(), enabling us to identify the most suitable clustering approach that best fits our data and helps us make informed decisions about the number of clusters.
+
+--> Validating what is the best clustering method for the Hierarchical technique:
+
+Calculating the actual distance of the dataframe using 'Manhattan' distance because we have some outliers in the data as we could verify in the EDA section
+
+```{r}
+dis_df <- dist(df_scale_wine, method = 'manhattan')
+```
+
+```{r}
+# Creating the hierarchical clustering with each method to compare them:
+h_complete <- hclust(dis_df, method = 'complete')
+h_single <- hclust(dis_df, method = 'single')
+h_avg <- hclust(dis_df, method = 'average')
+h_ward <- hclust(dis_df, method = 'ward.D')
+h_ward2 <- hclust(dis_df, method = 'ward.D2')
+```
+
+Calculating the cophenetic distance
+```{r}
+coph_complete <- cophenetic(h_complete)
+coph_single <- cophenetic(h_single)
+coph_avg <- cophenetic(h_avg)
+coph_ward <- cophenetic(h_ward)
+coph_ward2 <- cophenetic(h_ward2)
+```
+
+Calculating the correlation between each method and the actual distance and storing the result in a matrix:
+```{r}
+# Calculate the correlation matrices for each method
+cor_complete <- cor(coph_complete, dis_df)
+cor_single <- cor(coph_single, dis_df)
+cor_avg <- cor(coph_avg, dis_df)
+cor_ward <- cor(coph_ward, dis_df)
+cor_ward2 <- cor(coph_ward2, dis_df)
+
+# Combine the correlation matrices into a single matrix
+cor_matrices <- round(cbind(Complete = cor_complete, Single = cor_single, Average = cor_avg, Ward = cor_ward, Ward_D2 = cor_ward2),3)
+print(cor_matrices)
+```
+
+#### Interpretation:
+The correlation analysis between the actual data and the cophenetic distances reveals that the Average method exhibits the strong relationship with a correlation coefficient of 0.75 but which means that the Average method captures most of the underlying patterns in the data, this is followed closely by Ward.D2 method with 0.696 and Ward.d method with 0.667.
+
+--> Application of the 'Average' method to the NbClust() function:
+
+```{r}
+library('NbClust')
+res<-NbClust(data = df_scale_wine, distance = "manhattan", min.nc = 2, max.nc = 15, method = 'average', index = "all")
+```
+
+Nbclust method also agree with the above methods and the ground truth that k should be 3. 
+
+## Cluster Algorithm Application and Visualization
+
+Now, despite until this point we already determined the optimal Hierarchical clustering methods, we want to check how correlated are the different methods in this dataset to get valuable insights into the stability and consistency of the clustering results. Understanding the correlation helps us gain a deeper understanding of the underlying structure of the data and the effectiveness of the chosen clustering techniques. 
+
+Creating a correlation matrix between the dendrograms:
+
+```{r}
+# Creating the hierarchical clustering with each method to compare them:
+d_complete <- as.dendrogram(h_complete)
+d_single <- as.dendrogram(h_single)
+d_avg <- as.dendrogram(h_avg)
+d_ward <- as.dendrogram(h_ward)
+d_ward2 <- as.dendrogram(h_ward2)
+```
+
+```{r}
+library('dendextend')
+dend_list <- dendlist('Complete' = d_complete, 'Single' = d_single, 'Average' = d_avg, 'Ward' = d_ward, 'Ward.D2' = d_ward2)
+```
+
+```{r}
+# Calculating the correlation between the dendrograms:
+cor_dend <- cor.dendlist(dend_list)
+```
+
+```{r}
+# Printing the correlation matrix:
+round(cor_dend, 2)
+```
+
+
+```{r}
+# Visualizing the correlation matrix:
+library('corrplot')
+corrplot(cor_dend, 'pie', 'lower')
+```
+
+Through the above plot, we can see that WardD2 and Ward methods have a high correlation of 0.93 which means those methods generate similar clustering structures based on their cophenetic distances.Furthermore, the 'Average' has a correlation of 0.84 with 'Ward.D2' and 0.83 with 'Ward'.
+
+We will now generate dendrograms for the three optimal methods: 'Average,' 'Ward,' and 'Ward.D2' We will focus on comparing the dendrograms of 'Average' and 'Ward.D2' due to their high correlation, both with each other and with the actual distances. Additionally, we will compare the dendrogram of 'Average' with that of 'Ward,' as the latter also shows a strong correlation between them.
+
+#### A. AVERAGE:
+
+```{r}
+plot_davg <- fviz_dend(h_avg, k = 3, 
+          cex = 0.5, 
+          k_colors = c("#28E2E5", "#CD0BBC", "#FF6A6A"),
+          color_labels_by_k = TRUE,
+          rect = TRUE, horiz = TRUE)
+plot_davg
+```
+
+```{r}
+grp_av<-cutree(h_avg, k=3)
+fviz_cluster(list(data=df1, cluster=grp_av),
+             pallette=c("#2E9FDF", "#00AFBB", "#FC4E07"),
+             ellipse.type = "convex",
+             repel=TRUE,
+             show.clust.cent=FALSE)
+```
+
+```{r}
+tree_davg <- fviz_dend(h_avg, k = 3, 
+          cex = 0.5, 
+          k_colors = c("#28E2E5", "#CD0BBC", "#FF6A6A"),
+          color_labels_by_k = TRUE,
+          rect = TRUE, type = 'phylogenic')
+tree_davg
+```
+
+#### B. WARD.D2:
+
+```{r}
+plot_dward <- fviz_dend(h_ward2, k = 3, 
+          cex = 0.5, 
+          k_colors = c("#28E2E5", "#CD0BBC", "#FF6A6A"),
+          color_labels_by_k = TRUE,
+          rect = TRUE, horiz = TRUE)
+plot_dward
+```
+
+```{r}
+grp2<-cutree(h_ward2, k=3)
+fviz_cluster(list(data=df1, cluster=grp2),
+             pallette=c("#2E9FDF", "#00AFBB", "#FC4E07"),
+             ellipse.type = "convex",
+             repel=TRUE,
+             show.clust.cent=FALSE)
+```
+
+```{r}
+cir_dward <- fviz_dend(h_ward2, k = 3, 
+          cex = 0.5, 
+          k_colors = c("#28E2E5", "#CD0BBC", "#FF6A6A"),
+          color_labels_by_k = TRUE,
+          rect = TRUE, type = 'circular')
+cir_dward
+
+```
+
+#### c. WARD:
+
+```{r}
+plot_dcomplete <- fviz_dend(h_ward, k = 3, 
+          cex = 0.5, 
+          k_colors = c("#28E2E5", "#CD0BBC","#FF6A6A"),
+          color_labels_by_k = TRUE,
+          rect = TRUE, horiz = TRUE)
+plot_dcomplete
+```
+
+
+```{r}
+grp_d3<-cutree(h_ward, k=3)
+fviz_cluster(list(data=df1, cluster=grp_d3),
+             pallette=c("#2E9FDF", "#00AFBB", "#FC4E07"),
+             ellipse.type = "convex",
+             repel=TRUE,
+             show.clust.cent=FALSE)
+```
+
+#### Validating the difference between average and ward.D2 dendograms:
+
+```{r}
+library(dendextend)
+dend_list2 <- dendlist(d_avg, d_ward2)
+tanglegram(d_avg, d_ward2,
+           highlight_distinct_edges = FALSE,
+           common_subtrees_color_lines = FALSE,
+           common_subtrees_color_branches = TRUE,
+           main = paste('entanglement =', round(entanglement(dend_list2), 2)))
+```
+
+#### Validating the difference between average and ward dendograms:
+
+```{r}
+library(dendextend)
+dend_list3 <- dendlist(d_avg, d_ward)
+tanglegram(d_avg, d_ward,
+           highlight_distinct_edges = FALSE,
+           common_subtrees_color_lines = FALSE,
+           common_subtrees_color_branches = TRUE,
+           main = paste('entanglement =', round(entanglement(dend_list3), 2)))
+```
+
+#### Validating the clusters for the 'average' hierarchical clustering method:
+
+```{r}
+avg_group <- cutree(h_avg, k = 3)
+table(avg_group)
+```
+Adding the clusters to the original dataset:
+
+```{r}
+df_hclus <- cbind(wine, cluster = avg_group)
+head(df_hclus)
+```
+
+#### Interpretation:
+
+The validation results for these two dendrograms are as follows:
+
+Validating the Difference Between Average and Ward.D2 Dendrograms:
+Entanglement: 0.15
+Validating the Difference Between Average and Ward Dendrograms:
+Value: 0.16
+In dendrogram validation, "entanglement" or "value" measures are used to quantify the dissimilarity between two dendrograms. These measures help assess how different the two clustering results are in terms of their hierarchical structure.
+
+Based on the results, the entanglement value between the "average" and "ward.D2" dendrograms is 0.15, while the value between the "average" and "ward" dendrograms is 0.16. The values are relatively close, indicating that there is a moderate difference in the hierarchical structures of the dendrograms.
+
+Conclusions:
+
+The entanglement and value measures suggest that there is a difference between the "average" and "ward" dendrograms, but the difference is not substantial.
+The results imply that using either the "average" or "ward" dendrogram could lead to somewhat similar clustering outcomes, though some differences exist in their hierarchical structures.
+
+## Internal Validation
+
+```{r}
+library(clValid)
+clmethods<-c("hierarchical", "kmeans", "pam")
+intern<-clValid(df_scale_wine, nClust= 2:6, clMethods=clmethods, validation="internal",metric = 'manhattan')
+summary(intern)
+```
+
+```{r}
+op<-par(no.readonly = TRUE)
+par(mfrow=c(2,2), mar=c(4,4,3,1))
+plot(intern, legend=FALSE)
+plot(nClusters(intern), measures(intern, "Dunn")[,,1],type="n", axes=F, xlab="",ylab="")
+legend("center", clusterMethods(intern), col=1:9, lty=1:9, pch=paste(1:9))
+par(op)
+```
+#### Interpretation:
+Base on the results and the plot below for internal validation we can conclude the following
+
+-Hierarchical Clustering:
+* Based on the validation measures, the best option for hierarchical clustering is when the number of clusters is k=2. It has the highest connectivity (2.9290), Dunn index (0.3708), and silhouette score (0.2583) among all the tested cluster numbers.
+* The second-best option is when k=3, which matches your ground truth. It has a good connectivity (10.0603) and Dunn index (0.2235), but its silhouette score (0.1580) is lower than the best option.
+-K-means Clustering:
+The optimal choice for k-means clustering is when the number of clusters is k=3, which aligns with your ground truth. It has the highest Dunn index (0.2836) and silhouette score (0.2836) compared to other cluster numbers.
+However, it's worth noting that k-means with k=4 also shows promising results with relatively high connectivity (65.0591) and good Dunn index (0.2575) and silhouette score (0.2575).
+-PAM Clustering:
+The best option for PAM clustering is when the number of clusters is k=3, which again aligns with your ground truth. It has the highest silhouette score (0.2661) compared to other cluster numbers.
+Similar to k-means, PAM with k=4 also shows good results in terms of connectivity (79.7687) and Dunn index (0.2034), but its silhouette score is lower than when k=3.
+
+Are conclusion is base on the internal validation k should be two. 
+
+## Silhouette score analysis 
+
+Now let's analyze the silhouette width results for each clustering algorithm (k-means, PAM, and hierarchical clustering) and look at the negative values and the best average silhouette score.
+### K-means algorithm
+
+```{r}
+res.km_2 <- eclust(df_scale_wine, "kmeans", k=3, nstart=25, graph=FALSE)
+# Silhouette plot
+fviz_silhouette(res.km_2, palette="jco", 
+                ggtheme=theme_classic())
+```
+
+```{r}
+silinfo <- res.km_2$silinfo
+names(silinfo)
+# Average silhouette width of each cluster
+silinfo$clus.avg.widths
+# The total average (mean of all individual silhouette widths)
+silinfo$avg.width
+```
+
+```{r}
+# Silhouette width of observation
+sil <- res.km_2$silinfo$widths[, 1:3]
+# Objects with negative silhouette
+neg_sil_index <- which(sil[, 'sil_width'] < 0)
+sil[neg_sil_index, , drop = FALSE]
+```
+### PAM algorithm
+
+```{r}
+res.pam_2 <- eclust(df_scale_wine, "pam", k=3, nstart=25, graph=FALSE, metric = "manhattan")
+```
+
+
+```{r}
+# Silhouette plot
+fviz_silhouette(res.pam_2, palette="jco", 
+                ggtheme=theme_classic())
+```
+
+```{r}
+silinfo <- res.pam_2$silinfo
+names(silinfo)
+# Average silhouette width of each cluster
+silinfo$clus.avg.widths
+# The total average (mean of all individual silhouette widths)
+silinfo$avg.width
+```
+
+```{r}
+# Silhouette width of observation
+sil <- res.pam_2$silinfo$widths[, 1:3]
+# Objects with negative silhouette
+neg_sil_index <- which(sil[, 'sil_width'] < 0)
+sil[neg_sil_index, , drop = FALSE]
+```
+
+```{r}
+res.hclust_2 <- eclust(df_scale_wine, "hclust", graph=FALSE, metric = "manhattan")
+# Silhouette plot
+fviz_silhouette(res.hclust_2, palette="jco", 
+                ggtheme=theme_classic())
+```
+
+```{r}
+silinfo <- res.hclust_2$silinfo
+names(silinfo)
+# Average silhouette width of each cluster
+silinfo$clus.avg.widths
+# The total average (mean of all individual silhouette widths)
+silinfo$avg.width
+# The size of each clusters
+res.hclust_2$size
+```
+
+```{r}
+# Silhouette width of observation
+sil <- res.hclust_2$silinfo$widths[, 1:3]
+# Objects with negative silhouette
+neg_sil_index <- which(sil[, 'sil_width'] < 0)
+sil[neg_sil_index, , drop = FALSE]
+
+```
+
+#### Interpretation:
+
+Based on the silhouette width results and the number of negative observations for each clustering algorithm, we can conclude the following:
+
+* Hierarchical Clustering (hclust):
+Silhouette Width: 0.28
+Number of Negative Observations: 8
+Silhouette Plot: This silhouette width value indicates that, on average, the clusters have a reasonable degree of separation and compactness. The silhouette plot will show the distribution of silhouette values for individual data points. In this case, 8 data points have negative silhouette values, which suggests that some data points are not well-clustered and may be more similar to data points in other clusters.
+Conclusion: Hierarchical clustering performs reasonably well with a moderate average silhouette width. However, the presence of 8 negative silhouette values indicates that there are problematic data points that impact the clustering quality.
+* PAM Clustering:
+Silhouette Width: 0.27
+Number of Negative Observations: 10
+Silhouette Plot: The silhouette plot will reveal how the individual data points are distributed in terms of silhouette values. In this case, 9 data points have negative silhouette values, indicating suboptimal cluster assignments for these data points.
+Conclusion: PAM clustering shows a lower average silhouette width compared to hclust and k-means. Although it has 9 negative silhouette values, the clustering quality may be slightly worse than the other methods.
+
+* K-means Clustering:
+Silhouette Width: 0.28
+Number of Negative Observations: 7
+Silhouette Plot: The silhouette plot for k-means will illustrate how well the data points are separated into clusters. Here, 7 data points have negative silhouette values, suggesting that there are some clustering issues affecting these data points.
+Conclusion: K-means clustering exhibits the highest average silhouette width among the three methods. While it also has 7 negative silhouette values, it seems to perform slightly better than hierarchical clustering and PAM in terms of the average silhouette width.
+Summary:
+
+Among the three methods, k-means has the highest average silhouette width (0.2835806), indicating better overall clustering quality compared to hierarchical clustering (0.2763181) and PAM (0.2660783).
+However, the difference in the average silhouette width is relatively small, and all methods show reasonably good clustering results.
+All three methods have some negative silhouette values, indicating areas for potential improvement in cluster assignments.
+
+Overall, based on the average silhouette width, k-means appears to be the best-performing method, followed by hierarchical clustering and then PAM.
+
+### Stability measures
+
+```{r}
+stab_1<-clValid(df_scale_wine, nClust= 2:6,clMethods=c("hierarchical", "kmeans", "pam"), validation="stability", metric = "manhattan")
+summary(stab_1)
+```
+
+```{r}
+op<-par(no.readonly= TRUE)
+par(mfrow=c(2, 2) , mar=c(4, 4,3, 1))
+plot(stab_1, measure=c("APN", "AD", "ADM","FOM") , legend=FALSE)
+plot(nClusters(stab_1), measures(stab_1, "APN") [,,1], type="n", axes=F,
+xlab="" ,ylab="")
+legend("center", clusterMethods(stab_1), col=1:9, lty=1:9, pch=paste (1:9))
+par(op)
+```
+
+The stability measures compare the results from clustering based on the full
+data to clustering based on removing each column, one at a time. In all cases the average is taken over all the deleted columns, and all measures should be minimized.
+
+APN and ADM are suggesting that the tendency is better for hierarchical. However, APN agree with our analysis that k=3 is the best score for hierarchical, while for ADM k should be 3 for k-means. FOM and AD agree that k=6 for k-means algorithm.
+
+
+## External Validation for every method
+
+###  Hierarchical method:
+
+a. Rand Index and Adjusted Rand Index:
+
+```{r}
+gt_var <- as.numeric(df_hclus$Type)
+wine$Type <- as.numeric(wine$Type)
+clus_hie <- as.numeric(df_hclus$cluster)
+```
+
+```{r}
+RRand(gt_var, clus_hie)
+```
+
+As observed, the Rand Index result for Hierarchical is 0.72, and the Adjusted Rand Index result is 0.47. These results mean that the two clustering methods (Hierarchical and Ground Truth) agree on the clustering for most of the pair of elements.
+
+b. Meila's Variation Index (VI)
+
+```{r}
+vi.dist(gt_var, clus_hie, parts = FALSE, base = 2)
+```
+Meila's Variation Index (VI) has a score of 0.94 which suggests a good level of similarity between the two clusterings but the algorithm is not perfectly capturing the underlying structure of the data, reason why we have a difference between the number of "k" for the  internal validation of the Hierarchical method and the Ground Truth.
+
+###  K-means method:
+
+a. Rand Index and Adjusted Rand Index:
+
+```{r}
+km.res_wine <- kmeans(df_scale_wine, 3, nstart = 25)
+df_km <- cbind(wine, cluster = km.res_wine$cluster)
+gt_km <- df_km$Type
+```
+
+```{r}
+RRand(gt_km, df_km$cluster)
+```
+
+Upon observation, the Rand Index for K-means yields an score of 0.95, and the Adjusted Rand Index yields a result of 0.89. These scores indicate a high level of agreement between the cluster assignments produced by the K-means method and the Ground Truth for the majority of the element pairs.
+
+It is noteworthy that despite the superior performance of the Hierarchical clustering algorithm as indicated by the internal validation measures, the K-means method still demonstrates remarkable agreement with the Ground Truth clustering.
+
+b. Meila's Variation Index (VI)
+
+```{r}
+vi.dist(gt_km, df_km$cluster, parts = FALSE, base = 2)
+```
+
+Meila's Variation Index (VI) has an score of 0.39 suggests a low level of similarity between the two clusterings and the algorithm is not capturing the underlying structure of the data.
+
+###  K-medoids method:
+
+a. Rand Index and Adjusted Rand Index:
+
+```{r}
+pam.res_wine <- pam(df_scale_wine, 3, nstart = 25)
+df_pam <- cbind(wine, cluster = pam.res_wine$cluster)
+gt_pam <- df_pam$Type
+```
+
+
+```{r}
+RRand(gt_pam, df_pam$cluster)
+```
+
+As observed, the Rand Index result for K-medoids is 0.87, and the Adjusted Rand Index result is 0.72. These results mean that the two clustering methods (K-medoids and Ground Truth) agree on the clustering for most of the pair of elements.
+
+b. Meila's Variation Index (VI)
+
+```{r}
+vi.dist(gt_pam, df_pam$cluster, parts = FALSE, base = 2)
+```
+
+Meila's Variation Index (VI) has an score of 0.704 which suggests a moderate level of similarity between the two clusterings but the algorithm is not perfectly capturing the underlying structure of the data.
+
+### Conclusions:
+
+- In conclusion, this project was dedicated to exploring and practically applying two primary clustering methods: Partitional Clustering (specifically K-means) and Agglomerative Clustering. Throughout the project, we conducted thorough data exploration for both datasets, gaining a profound understanding of their unique characteristics and properties.
+
+- For Partitional Clustering, we executed essential preprocessing steps, such as standardization or normalization of continuous variables. We employed various methods, including the Elbow method, Silhouette method, Gap statistics, and NbClust() function, to determine the optimal number of clusters. Internal Validation Indexes were also utilized to validate our choices. Subsequently, we applied the K-means algorithm with the determined optimal cluster count. The quality and structure of the clustering outcomes were extensively evaluated using a variety of clustering evaluation metrics, including Silhouette coefficient, Dunn Index, Connectivity for internal validation, and Rand Index and Meila's Variation Index VI for external validation. Visualization plots proved invaluable in this assessment.
+
+- As for Hierarchical Clustering, we carefully selected the appropriate distance method aligning with the data's characteristics. We then determined the optimal algorithm for Hierarchical Clustering by exploring the correlation between different Hierarchical algorithm methods and the Cophenetic distance of each method. To assess the cluster tendency, we employed the Elbow method, Silhouette method, Gap Statistics, and NbClust() function to determine the optimal number of clusters, similar to the approach used for K-means. Finally, we performed the Hierarchical Clustering algorithm using the best three methods and compared their dendrograms. As in K-means, we evaluated the results using both internal and external validation indexes, ensuring the quality and reliability of the clusters.
+
+- In our report, the reader can find a more detailed analysis for both datasets, including the implementation of Pam and Hierarchical for the Seeds dataset and the implementation of K-means and Pam for the Wine dataset. This allowed us to compare different results at each clustering step, providing deeper insights into the clustering performance.
+
+- In essence, this project offered valuable insights into the application of diverse clustering methods, their evaluation, and their adaptability to different datasets, including text data. By understanding the strengths and limitations of these clustering algorithms, we have equipped ourselves with essential tools for future data analysis tasks, building a solid foundation for continued exploration and practical applications in the dynamic field of Data Analysis.
+
